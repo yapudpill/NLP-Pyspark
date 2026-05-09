@@ -1,0 +1,17 @@
+---
+title: Discovering pyspark and spark-nlp
+subtitle: Stylometric analysis of XIXth century literature
+---
+
+```{python}
+from pyspark.sql import SparkSession
+spark: SparkSession = SparkSession.builder.getOrCreate()
+
+ddr = spark.sparkContext.parallelize(range(10))
+
+ddr = ddr.map(lambda x: x * 2)
+
+ddr.collect()
+```
+
+Ça marche !

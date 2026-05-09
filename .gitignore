@@ -1,0 +1,10 @@
+# python stuff
+__pycache__/
+.venv
+/.quarto/
+**/*.quarto_ipynb
+**/*.quarto_ipynb*
+
+# out stuff
+.vscode
+_outdir
