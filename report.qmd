@@ -1,11 +1,12 @@
 ---
 title: Discovering pyspark and spark-nlp
 subtitle: Stylometric analysis of XIXth century literature
+format: html
 ---
 
 ```{python}
-from pyspark.sql import SparkSession
-spark: SparkSession = SparkSession.builder.getOrCreate()
+import sparknlp
+spark = sparknlp.start()
 
 ddr = spark.sparkContext.parallelize(range(10))
 
@@ -15,3 +16,41 @@ ddr.collect()
 ```
 
 Ça marche !
+
+```{python}
+from sparknlp.base import *
+from sparknlp.annotator import *
+
+document_assembler = (
+  DocumentAssembler()
+    .setInputCol("text")
+    .setOutputCol("document")
+)
+
+sentence_detector = (
+  SentenceDetector()
+    .setInputCols(["document"])
+    .setOutputCol("sentence")
+)
+
+pipeline = Pipeline(stages=[
+  document_assembler,
+  sentence_detector
+])
+```
+
+```{python}
+sentences = [
+  ['Hello, this is an example sentence.'],
+  ['And this is a second sentence. Then a third one.']
+]
+
+data = spark.createDataFrame(sentences, ["text"])
+
+result = pipeline.fit(data).transform(data)
+
+for row in result.collect():
+    print(row)
+```
+
+Et ça marche encore !
