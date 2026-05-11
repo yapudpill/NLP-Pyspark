@@ -1,11 +1,14 @@
 # python stuff
 __pycache__/
 .venv
+
+# quarto stuff
 /.quarto/
+/_*.local
 **/*.quarto_ipynb
 **/*.quarto_ipynb*
 
-# out stuff
+# our stuff
 .vscode
 _outdir
 texts
