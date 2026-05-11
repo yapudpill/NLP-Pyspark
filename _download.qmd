@@ -1,0 +1,25 @@
+```{python}
+#| label: download
+
+import pathlib
+import csv
+import sparknlp
+import gutenbergpy.textget
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
+
+spark: SparkSession = sparknlp.start()
+books = spark.read.csv("books.csv", header=True)
+
+@F.udf
+def download_book(id):
+    print(f"Downloading book with ID {id}...")
+    try:
+        raw = gutenbergpy.textget.get_text_by_id(id)
+        text = gutenbergpy.textget.strip_headers(raw).strip().decode("utf-8")
+        return text
+    except Exception as e:
+        print(f"Failed to download book with ID {id}: {e}")
+
+books = books.withColumn("text", download_book(books.id))
+```
