@@ -4,53 +4,94 @@ subtitle: Stylometric analysis of XIXth century literature
 format: html
 ---
 
-```{python}
-import sparknlp
-spark = sparknlp.start()
-
-ddr = spark.sparkContext.parallelize(range(10))
-
-ddr = ddr.map(lambda x: x * 2)
-
-ddr.collect()
-```
-
-Ça marche !
+{{< include _annotate.qmd >}}
 
 ```{python}
-from sparknlp.base import *
-from sparknlp.annotator import *
 
-document_assembler = (
-  DocumentAssembler()
-    .setInputCol("text")
-    .setOutputCol("document")
+stats = (
+    result
+    .select(
+        "title",
+        F.size("sentences").alias("num_sentences"),
+        F.size("normalized").alias("num_words")
+    )
+    .groupBy("title")
+    .agg(
+      F.sum("num_sentences").alias("num_sentences"),
+      F.sum("num_words").alias("num_words")
+    )
 )
 
-sentence_detector = (
-  SentenceDetector()
-    .setInputCols(["document"])
-    .setOutputCol("sentence")
+import re
+
+vowels = "aeiouyàâäéèêëîïôöùûüÿœæ"
+
+@F.udf("int")
+def count_syllables(word):
+    groups = re.findall(rf'[{vowels}]+', word)
+    return max(len(groups), 1)
+
+normalized = (
+  result
+  .select(
+      "title",
+      F.explode("normalized.result").alias("word")
+  )
 )
 
-pipeline = Pipeline(stages=[
-  document_assembler,
-  sentence_detector
-])
+syllables = (
+    normalized
+    .withColumn(
+        "syllables",
+        count_syllables("word")
+    )
+    .groupBy("title")
+    .agg(
+        F.sum("syllables").alias("num_syllables")
+    )
+)
+
+final = (
+    stats
+    .join(syllables, on="title")
+)
+
+final = (
+    final
+    .withColumn(
+        "kandel_moles",
+        (
+            207
+            - 1.015 * (
+                F.col("num_words")
+                / F.col("num_sentences")
+            )
+            - 73.6 * (
+                F.col("num_syllables")
+                / F.col("num_words")
+            )
+        )
+    )
+    .withColumn(
+        "flesch_kincaid",
+        (
+            206.835
+            - 1.015 * (
+                F.col("num_words")
+                / F.col("num_sentences")
+            )
+            - 84.6 * (
+                F.col("num_syllables")
+                / F.col("num_words")
+            )
+        )
+    )
+)
+
+final.select(
+    "title",
+    "flesch_kincaid",
+    "kandel_moles"
+).sort("kandel_moles", ascending=True).show(truncate=False)
+
 ```
-
-```{python}
-sentences = [
-  ['Hello, this is an example sentence.'],
-  ['And this is a second sentence. Then a third one.']
-]
-
-data = spark.createDataFrame(sentences, ["text"])
-
-result = pipeline.fit(data).transform(data)
-
-for row in result.collect():
-    print(row)
-```
-
-Et ça marche encore !

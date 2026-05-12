@@ -1,0 +1,58 @@
+{{< include _download.qmd >}}
+
+```{python}
+#| label: annotate
+
+from sparknlp.base import DocumentAssembler, Pipeline
+from sparknlp.annotator import (
+    SentenceDetector,
+    Tokenizer,
+    Normalizer,
+    PerceptronModel,
+    LemmatizerModel
+)
+
+if do_annotation:
+    document = (
+        DocumentAssembler()
+        .setInputCol("paragraph")
+        .setOutputCol("document")
+    )
+
+    sentence_detector = (
+        SentenceDetector()
+        .setInputCols(["document"])
+        .setOutputCol("sentences")
+    )
+
+    tokenizer = (
+        Tokenizer()
+        .setInputCols(["sentences"])
+        .setOutputCol("tokens")
+    )
+
+    normalizer = (
+        Normalizer()
+        .setInputCols(["tokens"])
+        .setOutputCol("normalized")
+        .setLowercase(True)
+    )
+
+    pipeline = Pipeline(
+        stages=[
+            document,
+            sentence_detector,
+            tokenizer,
+            normalizer
+        ]
+    )
+
+    result = pipeline.fit(books).transform(books)
+    result.write.parquet(str(annotation_cache))
+else:
+    result = spark.read.parquet(str(annotation_cache))
+
+result.persist()
+
+#analysis = result.select("title", "sentences.result", "tokens.result", "normalized.result")
+```

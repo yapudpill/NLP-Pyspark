@@ -8,23 +8,44 @@ spark: SparkSession = sparknlp.start()
 ```
 
 ```{python}
+#| label: cache-files
+
+import pathlib
+cache_dir = pathlib.Path("cache")
+cache_dir.mkdir(exist_ok=True)
+
+books_cache = cache_dir / "books.parquet"
+annotation_cache = cache_dir / "annotation.parquet"
+
+dl_books = not books_cache.exists() and not annotation_cache.exists()
+do_annotation = not annotation_cache.exists()
+```
+
+```{python}
 #| label: download
 
 from gutenbergpy.textget import get_text_by_id, strip_headers
 from pyspark.sql import functions as F
+from pyspark.sql.types import ArrayType, StringType
 
-@F.udf
+@F.udf(ArrayType(StringType()))
 def download_book(id):
     raw = get_text_by_id(id)
-    text = strip_headers(raw).strip().decode("utf-8")
-    return text
+    text = strip_headers(raw).decode("utf-8").split("\n\n")
+    return [p.strip() for p in text if p.strip() != ""]
 
-books = spark.read.csv(
-    "books.csv",
-    header=True,
-    schema="author STRING, type STRING, title STRING, id INT"
-)
-books = books.withColumn("text", download_book(books.id))
-
-books.show()
+if dl_books:
+    books = (
+        spark.read.csv(
+            "books.csv",
+            header=True,
+            schema="author STRING, type STRING, title STRING, id INT"
+        )
+        .withColumn("text", download_book("id"))
+        .select("*", F.explode("text").alias("paragraph"))
+        .drop("text")
+    )
+    books.write.parquet(str(books_cache))
+elif do_annotation:
+    books = spark.read.parquet(str(books_cache))
 ```
