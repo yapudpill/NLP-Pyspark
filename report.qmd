@@ -11,11 +11,11 @@ format: html
 stats = (
     result
     .select(
-        "title",
+        "*",
         F.size("sentences").alias("num_sentences"),
         F.size("normalized").alias("num_words")
     )
-    .groupBy("title")
+    .groupBy("title", "type", "author")
     .agg(
       F.sum("num_sentences").alias("num_sentences"),
       F.sum("num_words").alias("num_words")
@@ -34,7 +34,7 @@ def count_syllables(word):
 normalized = (
   result
   .select(
-      "title",
+      "*",
       F.explode("normalized.result").alias("word")
   )
 )
@@ -45,7 +45,7 @@ syllables = (
         "syllables",
         count_syllables("word")
     )
-    .groupBy("title")
+    .groupBy("title", "type", "author")
     .agg(
         F.sum("syllables").alias("num_syllables")
     )
@@ -53,7 +53,7 @@ syllables = (
 
 final = (
     stats
-    .join(syllables, on="title")
+    .join(syllables, on=["title", "type", "author"])
 )
 
 final = (
@@ -88,10 +88,88 @@ final = (
     )
 )
 
-final.select(
-    "title",
-    "flesch_kincaid",
-    "kandel_moles"
-).sort("kandel_moles", ascending=True).show(truncate=False)
+```
+
+```{python}
+
+import plotly.express as px
+
+final_pd = final.sort("kandel_moles", ascending=True).toPandas()
+
+fig = px.bar(
+    final_pd,
+    x="title",
+    y="kandel_moles",
+    title="Indice de Kandel-Moles par Livre",
+    labels={"title": "Livre", "kandel_moles": "Indice Kandel-Moles"},
+    color="type",
+    category_orders={"title": final_pd["title"].tolist()}
+)
+fig.show()
+
+```
+
+```{python}
+
+kandel_author_pd = (
+    final
+    .groupBy("author")
+    .agg(F.avg("kandel_moles").alias("kandel_moles_moyen"))
+    .sort("kandel_moles_moyen", ascending=True)
+    .toPandas()
+)
+
+fig_author = px.bar(
+    kandel_author_pd,
+    x="author",
+    y="kandel_moles_moyen",
+    title="Indice de Kandel-Moles moyen par auteur",
+    labels={"author": "Auteur", "kandel_moles_moyen": "Indice Kandel-Moles moyen"},
+    category_orders={"author": kandel_author_pd["author"].tolist()}
+)
+fig_author.show()
+
+```
+
+```{python}
+
+from pyspark.sql import Window
+
+zipf = (
+    result
+    .select(
+        "title",
+        F.explode("normalized.result").alias("word")
+    )
+    .where(
+        F.col("word").isNotNull()
+        & (F.length(F.trim(F.col("word"))) > 0)
+    )
+    .withColumn("word", F.lower(F.col("word")))
+    .groupBy("title", "word")
+    .agg(F.count("*").alias("freq"))
+)
+
+rank_window = Window.partitionBy("title").orderBy(F.desc("freq"), F.asc("word"))
+
+zipf_ranked_pd = (
+    zipf
+    .withColumn("rank", F.row_number().over(rank_window))
+    .select("title", "rank", "freq")
+    .toPandas()
+)
+
+for title, book_df in zipf_ranked_pd.groupby("title", sort=False):
+    fig_zipf = px.scatter(
+        book_df.sort_values("rank"),
+        x="rank",
+        y="freq",
+        log_x=True,
+        log_y=True,
+        title=f"Zipf plot - {title}",
+        labels={"rank": "Rang", "freq": "Fréquence"}
+    )
+    fig_zipf.update_traces(mode="lines+markers", marker={"size": 4})
+    fig_zipf.show()
 
 ```

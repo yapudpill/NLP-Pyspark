@@ -38,21 +38,41 @@ if do_annotation:
         .setLowercase(True)
     )
 
+    pos_tagger = (
+        PerceptronModel.pretrained(
+            "pos_ud_gsd",
+            "fr"
+        )
+        .setInputCols(["sentences", "normalized"])
+        .setOutputCol("pos")
+    )
+
+    lemmatizer = (
+        LemmatizerModel.pretrained(
+            "lemma",
+            "fr"
+        )
+        .setInputCols(["normalized"])
+        .setOutputCol("lemmas")
+    )
+
     pipeline = Pipeline(
         stages=[
             document,
             sentence_detector,
             tokenizer,
-            normalizer
+            normalizer,
+            pos_tagger,
+            lemmatizer
         ]
     )
 
     result = pipeline.fit(books).transform(books)
+    result.persist()
     result.write.parquet(str(annotation_cache))
 else:
     result = spark.read.parquet(str(annotation_cache))
-
-result.persist()
+    result.persist()
 
 #analysis = result.select("title", "sentences.result", "tokens.result", "normalized.result")
 ```
