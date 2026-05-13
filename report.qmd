@@ -133,43 +133,43 @@ fig_author.show()
 
 ```{python}
 
-from pyspark.sql import Window
-
-zipf = (
-    result
-    .select(
-        "title",
-        F.explode("normalized.result").alias("word")
-    )
-    .where(
-        F.col("word").isNotNull()
-        & (F.length(F.trim(F.col("word"))) > 0)
-    )
-    .withColumn("word", F.lower(F.col("word")))
-    .groupBy("title", "word")
-    .agg(F.count("*").alias("freq"))
-)
-
-rank_window = Window.partitionBy("title").orderBy(F.desc("freq"), F.asc("word"))
-
-zipf_ranked_pd = (
-    zipf
-    .withColumn("rank", F.row_number().over(rank_window))
-    .select("title", "rank", "freq")
-    .toPandas()
-)
-
-for title, book_df in zipf_ranked_pd.groupby("title", sort=False):
-    fig_zipf = px.scatter(
-        book_df.sort_values("rank"),
-        x="rank",
-        y="freq",
-        log_x=True,
-        log_y=True,
-        title=f"Zipf plot - {title}",
-        labels={"rank": "Rang", "freq": "Fréquence"}
-    )
-    fig_zipf.update_traces(mode="lines+markers", marker={"size": 4})
-    fig_zipf.show()
-
+#from pyspark.sql import Window
+#
+#zipf = (
+#    result
+#    .select(
+#        "title",
+#        F.explode("normalized.result").alias("word")
+#    )
+#    .where(
+#        F.col("word").isNotNull()
+#        & (F.length(F.trim(F.col("word"))) > 0)
+#    )
+#    .withColumn("word", F.lower(F.col("word")))
+#    .groupBy("title", "word")
+#    .agg(F.count("*").alias("freq"))
+#)
+#
+#rank_window = Window.partitionBy("title").orderBy(F.desc("freq"), F.asc("word"))
+#
+#zipf_ranked_pd = (
+#    zipf
+#    .withColumn("rank", F.row_number().over(rank_window))
+#    .select("title", "rank", "freq")
+#    .toPandas()
+#)
+#
+#for title, book_df in zipf_ranked_pd.groupby("title", sort=False):
+#    fig_zipf = px.scatter(
+#        book_df.sort_values("rank"),
+#        x="rank",
+#        y="freq",
+#        log_x=True,
+#        log_y=True,
+#        title=f"Zipf plot - {title}",
+#        labels={"rank": "Rang", "freq": "Fréquence"}
+#    )
+#    fig_zipf.update_traces(mode="lines+markers", marker={"size": 4})
+#    fig_zipf.show()
+#
 ```

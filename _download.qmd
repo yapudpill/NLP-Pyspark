@@ -1,10 +1,19 @@
 ```{python}
 #| label: start-spark
+#| output: false
 
 import sparknlp
 from pyspark.sql import SparkSession
 
-spark: SparkSession = sparknlp.start()
+spark: SparkSession = (
+    SparkSession.builder
+    .appName("Big Data")
+    .master("local[*]")
+    .config("spark.driver.host", "127.0.0.2")
+    .config("spark.driver.bindAddress", "127.0.0.2")
+    .config("spark.jars.packages", f"com.johnsnowlabs.nlp:spark-nlp_2.12:{sparknlp.__version__}")
+    .getOrCreate()
+)
 ```
 
 ```{python}
@@ -46,6 +55,8 @@ if dl_books:
         .drop("text")
     )
     books.write.parquet(str(books_cache))
-elif do_annotation:
+else:
     books = spark.read.parquet(str(books_cache))
 ```
+
+{{< include _ELT.qmd >}}
