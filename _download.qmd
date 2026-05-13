@@ -24,10 +24,11 @@ cache_dir = pathlib.Path("cache")
 cache_dir.mkdir(exist_ok=True)
 
 books_cache = cache_dir / "books.parquet"
+library_cache = cache_dir / "library.parquet"
 annotation_cache = cache_dir / "annotation.parquet"
 
-dl_books = not books_cache.exists() and not annotation_cache.exists()
 do_annotation = not annotation_cache.exists()
+dl_books = do_annotation and not (books_cache.exists() and library_cache.exists())
 ```
 
 ```{python}
@@ -44,19 +45,21 @@ def download_book(id):
     return [p.strip() for p in text if p.strip() != ""]
 
 if dl_books:
-    books = (
-        spark.read.csv(
-            "books.csv",
-            header=True,
-            schema="author STRING, type STRING, title STRING, id INT"
-        )
+    books = spark.read.csv("books.csv", header=True,
+                           schema="author STRING, type STRING, title STRING, id INT")
+    library = (
+        books
+        .select("id")
         .withColumn("text", download_book("id"))
-        .select("*", F.explode("text").alias("paragraph"))
-        .drop("text")
+        .select("id", F.explode("text").alias("paragraph"))
     )
     books.write.parquet(str(books_cache))
+    library.write.parquet(str(library_cache))
 else:
     books = spark.read.parquet(str(books_cache))
+    library = spark.read.parquet(str(library_cache))
+
+books.persist()
 ```
 
 {{< include _ELT.qmd >}}

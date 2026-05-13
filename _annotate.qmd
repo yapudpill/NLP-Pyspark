@@ -1,5 +1,7 @@
 {{< include _download.qmd >}}
 
+# Annotation pipeline
+
 ```{python}
 #| label: annotate
 
@@ -67,12 +69,19 @@ if do_annotation:
         ]
     )
 
-    result = pipeline.fit(books).transform(books)
-    result.persist()
+    result = pipeline.fit(library).transform(library)
     result.write.parquet(str(annotation_cache))
 else:
     result = spark.read.parquet(str(annotation_cache))
-    result.persist()
-
-#analysis = result.select("title", "sentences.result", "tokens.result", "normalized.result")
 ```
+
+As required by the assignment, we annotated our corpus with Spark NLP. We used a very standard pipeline for this task, which includes the following stages:
+
+- `DocumentAssembler` to convert the raw text into a format that can be processed by Spark NLP.
+- `SentenceDetector` to split the text into sentences.
+- `Tokenizer` to split the sentences into tokens (words).
+- `Normalizer` to lowercase the tokens and remove punctuation.
+- `PerceptronModel` to perform part-of-speech tagging on the normalized tokens which will help the lemmatizer to disambiguate between different possible lemmas for a given word.
+- `LemmatizerModel` to lemmatize the normalized tokens (i.e. reduce them to their base form).
+
+For the POS tagging and lemmatization stages, we used pretrained models from Spark NLP. We chose the "pos_ud_gsd" model for POS tagging and the "lemma" model for lemmatization, both of which are available for French. These stages are not strictly necessary for the analyses we want to perform in this project but we decided to include them anyway to have a more complete annotation pipeline. They could be useful for more advanced analyses that we might want to do in the future, such as vocabulary richness measures.
