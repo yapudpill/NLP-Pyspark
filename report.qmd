@@ -47,22 +47,14 @@ syllables = (
     .agg(F.sum("syllables").alias("num_syllables"))
 )
 
+km = 207 - 1.015 * (F.col("num_words") / F.col("num_sentences")) - 73.6 * (F.col("num_syllables") / F.col("num_words"))
+fk = 206.835 - 1.015 * (F.col("num_words") / F.col("num_sentences")) - 84.6 * (F.col("num_syllables")/ F.col("num_words"))
+
 final = (
     stats
     .join(syllables, on="id")
     .join(books, on="id")
-    .withColumns({
-        "kandel_moles": (
-            207
-            - 1.015 * (F.col("num_words") / F.col("num_sentences"))
-            - 73.6 * (F.col("num_syllables") / F.col("num_words"))
-        ),
-        "flesch_kincaid": (
-            206.835
-            - 1.015 * (F.col("num_words") / F.col("num_sentences"))
-            - 84.6 * (F.col("num_syllables")/ F.col("num_words"))
-        )
-    })
+    .withColumns({"kandel_moles": km, "flesch_kincaid": fk})
 )
 ```
 
@@ -71,6 +63,8 @@ Here is two barplots showing the Kandel-Moles and Flesch-Kincaid indices for eac
 ```{python}
 #| label: readability-plots
 #| layout-ncol: 2
+
+## TODO: make the two plots in a subplot to have the same y-axis
 
 import plotly.express as px
 #import plotly.subplots as sp
@@ -104,7 +98,6 @@ plt2 = px.bar(
 
 plt1.show()
 plt2.show()
-
 ```
 
 As we can see, the two indices are highly correlated but the Flesch-Kincaid index is systematically lower than the Kandel-Moles index. Indeed, the Flesch-Kincaid formula is calibrated for English texts and gives a much higher weight to the number of syllables per word. However French naturally tends to have more syllables per word than English which leads every text to be deemed overly difficult to read by the Flesch-Kincaid formula.
@@ -113,29 +106,112 @@ Now focusing on the Kandel-Moles index, we notice that 13 out of the 15 easiest 
 
 ## Sliding readability indices
 
+We will now compute Kandel-Moles index again but this time on sliding windows of paragraphs instead of the whole book. This will allow us to see how the readability of the text evolves throughout the book and if there are significant variations between different parts of the same book.
+
+Since this is a per novel approach, we will only focus on a subset of 4 novels: the two easiest to read (*La Coucaratcha 1 & 3*) and the two hardest to read (*La Comédie Humaine 1* & *Rome*) according to the Kandel-Moles index computed on the whole book.
+
 ```{python}
+ids = [38971, 39825, 34528, 41211]
 
-# kandel_author_pd = (
-#     final
-#     .groupBy("author")
-#     .agg(F.avg("kandel_moles").alias("kandel_moles_moyen"))
-#     .sort("kandel_moles_moyen", ascending=True)
-#     .toPandas()
-# )
-
-# fig_author = px.bar(
-#     kandel_author_pd,
-#     x="author",
-#     y="kandel_moles_moyen",
-#     title="Indice de Kandel-Moles moyen par auteur",
-#     labels={"author": "Auteur", "kandel_moles_moyen": "Indice Kandel-Moles moyen"},
-#     category_orders={"author": kandel_author_pd["author"].tolist()}
-# )
-# fig_author.show()
-
+selected = result.filter(F.col("id").isin(ids))
 ```
 
 ```{python}
+def sliding(n):
+    tmp = (
+        selected
+        .withColumn("g_id", F.floor(F.col("p_id") / F.lit(n)))
+        .groupBy("id", "g_id")
+        .agg(
+            F.sum(F.size("sentences")).alias("num_sentences"),
+            F.sum(F.size("normalized")).alias("num_words")
+        )
+    )
+
+    syllables = (
+        selected
+        .withColumn("g_id", F.floor(F.col("p_id") / F.lit(n)))
+        .select("id", "g_id", F.explode("normalized").alias("word"))
+        .withColumn("syllables", count_syllables("word"))
+        .groupBy("id", "g_id")
+        .agg(F.sum("syllables").alias("num_syllables"))
+    )
+
+    final = (
+        tmp
+        .join(syllables, on=["id", "g_id"])
+        .withColumn("kandel_moles", km)
+        .join(books, on="id")
+    )
+
+    return final
+
+sliding_100 = sliding(100)
+sliding_200 = sliding(200)
+```
+
+First, let's look at the sliding Kandel-Moles index with a window of 100 paragraphs:
+
+```{python}
+#| label: sliding-plots
+#| layout-ncol: 2
+
+for id in ids:
+    to_graph = (
+        sliding_100
+        .filter(F.col("id") == id)
+        .sort("kandel_moles", ascending=True)
+        .toPandas()
+    )
+
+    plt = px.bar(
+        to_graph,
+        x="g_id",
+        y="kandel_moles",
+        title=f"Indice de Kandel-Moles pour {id}",
+        labels={"title": "Livre", "kandel_moles": "Indice Kandel-Moles"},
+        color="type",
+        category_orders={"title": final_pd["title"].tolist()}
+    )
+
+    plt.show()
+```
+
+The most striking observation is that the Kandel-Moles index is much more volatile when computed on sliding windows than on the whole book. For example, *Rome*, which was graded as the most difficult book to read with a score of 58.33 on the whole book, has some windows with a Kandel-Moles index as low as 50 and as high as 71.75. This suggests that the readability of the text can vary significantly throughout the book and that some parts of the book can be much easier to read than others.
+
+Now let's look at the sliding Kandel-Moles index with a window of 200 paragraphs:
+
+```{python}
+#| label: sliding-plots2
+#| layout-ncol: 2
+
+for id in ids:
+    to_graph = (
+        sliding_200
+        .filter(F.col("id") == id)
+        .sort("kandel_moles", ascending=True)
+        .toPandas()
+    )
+
+    plt = px.bar(
+        to_graph,
+        x="g_id",
+        y="kandel_moles",
+        title=f"Indice de Kandel-Moles pour {id}",
+        labels={"title": "Livre", "kandel_moles": "Indice Kandel-Moles"},
+        color="type",
+        category_orders={"title": final_pd["title"].tolist()}
+    )
+
+    plt.show()
+```
+
+Just like with the window of 100 paragraphs, we can see that the Kandel-Moles index is quite volatile with a window of 200 paragraphs. However, the variations are less extreme and are closer to the overall index.
+
+## Zipf's law
+
+```{python}
+#| label: zipf
 
 #from pyspark.sql import Window
 #
@@ -177,3 +253,7 @@ Now focusing on the Kandel-Moles index, we notice that 13 out of the 15 easiest 
 #    fig_zipf.show()
 #
 ```
+
+# Our experience with pySpark
+
+# Appendix: code snippets {.appendix}
