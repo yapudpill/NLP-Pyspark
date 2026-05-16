@@ -86,6 +86,8 @@ For the lemmatization stage, we used a pretrained model from Spark NLP, we chose
 Let's look at an example of the output of this pipeline:
 
 ```{python}
+#| label: annotation-example
+
 import pandas as pd
 first_row = (
     result

@@ -52,7 +52,7 @@ if dl_books:
         books
         .select("id")
         .withColumn("text", download_book("id"))
-        .select("id", F.explode("text").alias("paragraph"))
+        .select("id", F.posexplode("text").alias("p_id", "paragraph"))
     )
     books.write.parquet(str(books_cache))
     library.write.parquet(str(library_cache))

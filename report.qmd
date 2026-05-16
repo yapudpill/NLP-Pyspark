@@ -8,108 +8,110 @@ format: html
 
 # Stylometric analysis
 
+## Readability indices
+
+We will compute the Kandel-Moles and Flesch-Kincaid readability indices for our books. The formulas are as follows:
+
+- Kandel-Moles : $207 - 1.015 \times \frac{N_{words}}{N_{sentences}} - 73.6 \times \frac{N_{syllables}}{N_{words}}$
+- Flesch-Kincaid : $206.835 - 1.015 \times \frac{N_{words}}{N_{sentences}} - 84.6 \times \frac{N_{syllables}}{N_{words}}$
+
+Where $N_{words}$ is the number of words, $N_{sentences}$ is the number of sentences and $N_{syllables}$ is the number of syllables in the text. Higher values indicate easier readability.
+
 ```{python}
+#| label: readability
 
-# stats = (
-#     result
-#     .select(
-#         "*",
-#         F.size("sentences").alias("num_sentences"),
-#         F.size("normalized").alias("num_words")
-#     )
-#     .groupBy("title", "type", "author")
-#     .agg(
-#       F.sum("num_sentences").alias("num_sentences"),
-#       F.sum("num_words").alias("num_words")
-#     )
-# )
+import re
+from pyspark.sql.types import IntegerType
 
-# import re
+stats = (
+    result
+    .groupBy("id")
+    .agg(
+      F.sum(F.size("sentences")).alias("num_sentences"),
+      F.sum(F.size("normalized")).alias("num_words")
+    )
+)
 
-# vowels = "aeiouyàâäéèêëîïôöùûüÿœæ"
+vowels = "aeiouyàâäéèêëîïôöùûüÿœæ"
 
-# @F.udf("int")
-# def count_syllables(word):
-#     groups = re.findall(rf'[{vowels}]+', word)
-#     return max(len(groups), 1)
+@F.udf(IntegerType())
+def count_syllables(word):
+    groups = re.findall(rf'[{vowels}]+', word)
+    return max(len(groups), 1)
 
-# normalized = (
-#   result
-#   .select(
-#       "*",
-#       F.explode("normalized.result").alias("word")
-#   )
-# )
+syllables = (
+    result
+    .select("id", F.explode("normalized").alias("word"))
+    .withColumn("syllables", count_syllables("word"))
+    .groupBy("id")
+    .agg(F.sum("syllables").alias("num_syllables"))
+)
 
-# syllables = (
-#     normalized
-#     .withColumn(
-#         "syllables",
-#         count_syllables("word")
-#     )
-#     .groupBy("title", "type", "author")
-#     .agg(
-#         F.sum("syllables").alias("num_syllables")
-#     )
-# )
+final = (
+    stats
+    .join(syllables, on="id")
+    .join(books, on="id")
+    .withColumns({
+        "kandel_moles": (
+            207
+            - 1.015 * (F.col("num_words") / F.col("num_sentences"))
+            - 73.6 * (F.col("num_syllables") / F.col("num_words"))
+        ),
+        "flesch_kincaid": (
+            206.835
+            - 1.015 * (F.col("num_words") / F.col("num_sentences"))
+            - 84.6 * (F.col("num_syllables")/ F.col("num_words"))
+        )
+    })
+)
+```
 
-# final = (
-#     stats
-#     .join(syllables, on=["title", "type", "author"])
-# )
+Here is two barplots showing the Kandel-Moles and Flesch-Kincaid indices for each book, sorted by Kandel-Moles:
 
-# final = (
-#     final
-#     .withColumn(
-#         "kandel_moles",
-#         (
-#             207
-#             - 1.015 * (
-#                 F.col("num_words")
-#                 / F.col("num_sentences")
-#             )
-#             - 73.6 * (
-#                 F.col("num_syllables")
-#                 / F.col("num_words")
-#             )
-#         )
-#     )
-#     .withColumn(
-#         "flesch_kincaid",
-#         (
-#             206.835
-#             - 1.015 * (
-#                 F.col("num_words")
-#                 / F.col("num_sentences")
-#             )
-#             - 84.6 * (
-#                 F.col("num_syllables")
-#                 / F.col("num_words")
-#             )
-#         )
-#     )
-# )
+```{python}
+#| label: readability-plots
+#| layout-ncol: 2
+
+import plotly.express as px
+#import plotly.subplots as sp
+
+final_pd = final.sort("kandel_moles", ascending=True).toPandas()
+
+#plot = sp.make_subplots(rows=1, cols=2, subplot_titles=(
+#    "Indice de Kandel-Moles par Livre",
+#    "Indice de Flesch-Kincaid par Livre"
+#))
+
+plt1 = px.bar(
+    final.sort("kandel_moles", ascending=True).toPandas(),
+    x="title",
+    y="kandel_moles",
+    title="Indice de Kandel-Moles par Livre",
+    labels={"title": "Livre", "kandel_moles": "Indice Kandel-Moles"},
+    color="type",
+    category_orders={"title": final_pd["title"].tolist()}
+).update_yaxes(range=[0, 80])
+
+plt2 = px.bar(
+    final.sort("kandel_moles", ascending=True).toPandas(),
+    x="title",
+    y="flesch_kincaid",
+    title="Indice de Flesch-Kincaid par Livre",
+    labels={"title": "Livre", "flesch_kincaid": "Indice Flesch-Kincaid"},
+    color="type",
+    category_orders={"title": final_pd["title"].tolist()}
+).update_yaxes(range=[0, 80])
+
+plt1.show()
+plt2.show()
 
 ```
 
-```{python}
+As we can see, the two indices are highly correlated but the Flesch-Kincaid index is systematically lower than the Kandel-Moles index. Indeed, the Flesch-Kincaid formula is calibrated for English texts and gives a much higher weight to the number of syllables per word. However French naturally tends to have more syllables per word than English which leads every text to be deemed overly difficult to read by the Flesch-Kincaid formula.
 
-# import plotly.express as px
+Now focusing on the Kandel-Moles index, we notice that 13 out of the 15 easiest books to read are written by romantic authors. This is not surprising as romantic literature is known for its simple and accessible style, often using straightforward language and sentence structures to appeal to a wide audience. On the other hand, the two most difficult books to read are written by authors from the realist movement, which is known for its more complex and detailed writing style.
 
-# final_pd = final.sort("kandel_moles", ascending=True).toPandas()
-
-# fig = px.bar(
-#     final_pd,
-#     x="title",
-#     y="kandel_moles",
-#     title="Indice de Kandel-Moles par Livre",
-#     labels={"title": "Livre", "kandel_moles": "Indice Kandel-Moles"},
-#     color="type",
-#     category_orders={"title": final_pd["title"].tolist()}
-# )
-# fig.show()
-
-```
+## Sliding readability indices
 
 ```{python}
 
