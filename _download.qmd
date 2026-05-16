@@ -43,7 +43,8 @@ from pyspark.sql.types import ArrayType, StringType
 def download_book(id):
     raw = get_text_by_id(id)
     text = strip_headers(raw).decode("utf-8").split("\n\n")
-    return [p.strip().replace("\n", " ") for p in text if p.strip() != ""]
+    clean = [p.strip().replace("\n", " ") for p in text]
+    return [s for s in clean if s]
 
 if dl_books:
     books = spark.read.csv("books.csv", header=True,

@@ -20,42 +20,30 @@ Where $N_{words}$ is the number of words, $N_{sentences}$ is the number of sente
 ```{python}
 #| label: readability
 
-import re
-from pyspark.sql.types import IntegerType
+VOWELS = "aeiouyàâäéèêëîïôöùûüÿœæ"
 
-stats = (
-    result
-    .groupBy("id")
-    .agg(
-      F.sum(F.size("sentences")).alias("num_sentences"),
-      F.sum(F.size("normalized")).alias("num_words")
+KM = 207.000 - 1.015 * (F.col("num_words") / F.col("num_sentences")) - 73.6 * (F.col("num_syllables") / F.col("num_words"))
+FK = 206.835 - 1.015 * (F.col("num_words") / F.col("num_sentences")) - 84.6 * (F.col("num_syllables") / F.col("num_words"))
+
+def compute_readability(df, *groups):
+    return (
+        df
+        .withColumn(
+            "syllables",
+            F.aggregate(
+                "normalized", F.lit(0),
+                lambda acc, word: acc + F.regexp_count(word, F.lit(rf'[{VOWELS}]+'))
+            )
+        )
+        .groupBy("id", *groups)
+        .agg(
+            F.sum(F.size("sentences")).alias("num_sentences"),
+            F.sum(F.size("normalized")).alias("num_words"),
+            F.sum("syllables").alias("num_syllables")
+        )
+        .withColumns({"kandel_moles": KM, "flesch_kincaid": FK})
+        .join(books, on="id")
     )
-)
-
-vowels = "aeiouyàâäéèêëîïôöùûüÿœæ"
-
-@F.udf(IntegerType())
-def count_syllables(word):
-    groups = re.findall(rf'[{vowels}]+', word)
-    return max(len(groups), 1)
-
-syllables = (
-    result
-    .select("id", F.explode("normalized").alias("word"))
-    .withColumn("syllables", count_syllables("word"))
-    .groupBy("id")
-    .agg(F.sum("syllables").alias("num_syllables"))
-)
-
-km = 207 - 1.015 * (F.col("num_words") / F.col("num_sentences")) - 73.6 * (F.col("num_syllables") / F.col("num_words"))
-fk = 206.835 - 1.015 * (F.col("num_words") / F.col("num_sentences")) - 84.6 * (F.col("num_syllables")/ F.col("num_words"))
-
-final = (
-    stats
-    .join(syllables, on="id")
-    .join(books, on="id")
-    .withColumns({"kandel_moles": km, "flesch_kincaid": fk})
-)
 ```
 
 Here is two barplots showing the Kandel-Moles and Flesch-Kincaid indices for each book, sorted by Kandel-Moles:
@@ -69,7 +57,11 @@ Here is two barplots showing the Kandel-Moles and Flesch-Kincaid indices for eac
 import plotly.express as px
 #import plotly.subplots as sp
 
-final_pd = final.sort("kandel_moles", ascending=True).toPandas()
+final_pd = (
+    compute_readability(result)
+    .sort("kandel_moles", ascending=True)
+    .toPandas()
+)
 
 #plot = sp.make_subplots(rows=1, cols=2, subplot_titles=(
 #    "Indice de Kandel-Moles par Livre",
@@ -77,7 +69,7 @@ final_pd = final.sort("kandel_moles", ascending=True).toPandas()
 #))
 
 plt1 = px.bar(
-    final.sort("kandel_moles", ascending=True).toPandas(),
+    final_pd,
     x="title",
     y="kandel_moles",
     title="Indice de Kandel-Moles par Livre",
@@ -87,7 +79,7 @@ plt1 = px.bar(
 ).update_yaxes(range=[0, 80])
 
 plt2 = px.bar(
-    final.sort("kandel_moles", ascending=True).toPandas(),
+    final_pd,
     x="title",
     y="flesch_kincaid",
     title="Indice de Flesch-Kincaid par Livre",
@@ -114,37 +106,13 @@ Since this is a per novel approach, we will only focus on a subset of 4 novels: 
 ids = [38971, 39825, 34528, 41211]
 
 selected = result.filter(F.col("id").isin(ids))
-```
 
-```{python}
 def sliding(n):
-    tmp = (
+    return compute_readability(
         selected
-        .withColumn("g_id", F.floor(F.col("p_id") / F.lit(n)))
-        .groupBy("id", "g_id")
-        .agg(
-            F.sum(F.size("sentences")).alias("num_sentences"),
-            F.sum(F.size("normalized")).alias("num_words")
-        )
+        .withColumn("g_id", F.floor(F.col("p_id") / F.lit(n))),
+        "g_id"
     )
-
-    syllables = (
-        selected
-        .withColumn("g_id", F.floor(F.col("p_id") / F.lit(n)))
-        .select("id", "g_id", F.explode("normalized").alias("word"))
-        .withColumn("syllables", count_syllables("word"))
-        .groupBy("id", "g_id")
-        .agg(F.sum("syllables").alias("num_syllables"))
-    )
-
-    final = (
-        tmp
-        .join(syllables, on=["id", "g_id"])
-        .withColumn("kandel_moles", km)
-        .join(books, on="id")
-    )
-
-    return final
 
 sliding_100 = sliding(100)
 sliding_200 = sliding(200)
