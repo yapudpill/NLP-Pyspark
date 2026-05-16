@@ -9,8 +9,9 @@ spark: SparkSession = (
     SparkSession.builder
     .appName("Big Data")
     .master("local[*]")
-    .config("spark.driver.host", "127.0.0.2")
-    .config("spark.driver.bindAddress", "127.0.0.2")
+    .config("spark.driver.memory", "8G")
+    .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+    .config("spark.driver.maxResultSize", "0")
     .config("spark.jars.packages", f"com.johnsnowlabs.nlp:spark-nlp_2.12:{sparknlp.__version__}")
     .getOrCreate()
 )
@@ -42,7 +43,7 @@ from pyspark.sql.types import ArrayType, StringType
 def download_book(id):
     raw = get_text_by_id(id)
     text = strip_headers(raw).decode("utf-8").split("\n\n")
-    return [p.strip() for p in text if p.strip() != ""]
+    return [p.strip().replace("\n", " ") for p in text if p.strip() != ""]
 
 if dl_books:
     books = spark.read.csv("books.csv", header=True,
@@ -59,7 +60,7 @@ else:
     books = spark.read.parquet(str(books_cache))
     library = spark.read.parquet(str(library_cache))
 
-books.persist()
+books = books.persist()
 ```
 
 {{< include _ELT.qmd >}}
