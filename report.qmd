@@ -46,7 +46,7 @@ def compute_readability(df, *groups):
     )
 ```
 
-Here is two barplots showing the Kandel-Moles and Flesch-Kincaid indices for each book, sorted by Kandel-Moles:
+Here is two barplots showing the Kandel-Moles and Flesch-Kincaid indices for each book, sorted by Kandel-Moles index. We hid the titles since they make the plot less readable, you can see them by hovering over the bars.
 
 ```{python}
 #| label: readability-plots
@@ -74,8 +74,6 @@ fig.update_xaxes(showticklabels=False)
 fig.show()
 ```
 
-*Note: We hid the titles since they make the plot less readable, you can see them by hovering over the bars.*
-
 As we can see, the two indices are highly correlated but the Flesch-Kincaid index is systematically lower than the Kandel-Moles index. Indeed, the Flesch-Kincaid formula is calibrated for English texts and gives a much higher weight to the number of syllables per word. However French naturally tends to have more syllables per word than English which leads every text to be deemed overly difficult to read by the Flesch-Kincaid formula.
 
 Now focusing on the Kandel-Moles index, we notice that 13 out of the 15 easiest books to read are written by romantic authors. This is not surprising as romantic literature is known for its simple and accessible style, often using straightforward language and sentence structures to appeal to a wide audience. On the other hand, the two most difficult books to read are written by authors from the realist movement, which is known for its more complex and detailed writing style.
@@ -87,6 +85,8 @@ We will now compute Kandel-Moles index again but this time on sliding windows of
 Since this is a per novel approach, we will only focus on a subset of 4 novels: the two easiest to read (*La Coucaratcha 1 & 2*) and the two hardest to read (*La Comédie Humaine 1* & *Rome*) according to the Kandel-Moles index computed on the whole book.
 
 ```{python}
+#| label: sliding-readability
+
 def sliding_readability(df, n):
     return compute_readability(
         df.withColumn("g_id", F.floor(F.col("p_id") / F.lit(n))),
@@ -144,49 +144,39 @@ Just like with the window of 100 paragraphs, we can see that the Kandel-Moles in
 
 ## Zipf's law
 
+For the stake of completeness, we will also look at Zipf's law for each book. Zipf's law states that in a given corpus of natural language, the frequency of any word is inversely proportional to its rank in the frequency table. In other words, the most common word will occur approximately twice as often as the second most common word, and so on. We can visualize this by plotting the frequency of words against their rank on a log-log scale, this should result in a straight line with a slope of approximately -1.
+
+Here are the Zipf plots for each book in our corpus, you can hover over the points to see the corresponding word and use the animation slider to switch between books:
+
 ```{python}
 #| label: zipf
 
-#from pyspark.sql import Window
-#
-#zipf = (
-#    result
-#    .select(
-#        "title",
-#        F.explode("normalized.result").alias("word")
-#    )
-#    .where(
-#        F.col("word").isNotNull()
-#        & (F.length(F.trim(F.col("word"))) > 0)
-#    )
-#    .withColumn("word", F.lower(F.col("word")))
-#    .groupBy("title", "word")
-#    .agg(F.count("*").alias("freq"))
-#)
-#
-#rank_window = Window.partitionBy("title").orderBy(F.desc("freq"), F.asc("word"))
-#
-#zipf_ranked_pd = (
-#    zipf
-#    .withColumn("rank", F.row_number().over(rank_window))
-#    .select("title", "rank", "freq")
-#    .toPandas()
-#)
-#
-#for title, book_df in zipf_ranked_pd.groupby("title", sort=False):
-#    fig_zipf = px.scatter(
-#        book_df.sort_values("rank"),
-#        x="rank",
-#        y="freq",
-#        log_x=True,
-#        log_y=True,
-#        title=f"Zipf plot - {title}",
-#        labels={"rank": "Rang", "freq": "Fréquence"}
-#    )
-#    fig_zipf.update_traces(mode="lines+markers", marker={"size": 4})
-#    fig_zipf.show()
-#
+rank_window = Window.partitionBy("id").orderBy(F.desc("freq"))
+
+zipf = (
+    result
+    .select("id", F.explode("normalized").alias("word"))
+    .groupBy("id", "word")
+    .agg(F.count("*").alias("freq"))
+    .withColumn("rank", F.row_number().over(rank_window))
+    .join(books.select("id", "title"), on="id")
+    .orderBy("title", "rank")
+)
+
+fig = px.line(
+    zipf.toPandas(),
+    x="rank", log_x=True,
+    y="freq", log_y=True,
+    markers=True,
+    animation_frame="title",
+    title="Zipf plot for each book (rank vs frequency of words in log-log scale)",
+    labels={"rank": "Rank", "freq": "Frequency", "title": "Book"},
+    hover_data={"word": True}
+)
+fig.show()
 ```
+
+Unsurprisingly, all the books do follow Zipf's law quite closely. Some books have a slightly steeper slope than others, which means that they tend to have a less diverse vocabulary with a few very common words and many rare words.
 
 # Our experience with pySpark
 
