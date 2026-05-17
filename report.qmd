@@ -50,47 +50,31 @@ Here is two barplots showing the Kandel-Moles and Flesch-Kincaid indices for eac
 
 ```{python}
 #| label: readability-plots
-#| layout-ncol: 2
-
-## TODO: make the two plots in a subplot to have the same y-axis
 
 import plotly.express as px
-#import plotly.subplots as sp
 
-final_pd = (
+global_readability = (
     compute_readability(result)
     .sort("kandel_moles", ascending=True)
     .toPandas()
 )
 
-#plot = sp.make_subplots(rows=1, cols=2, subplot_titles=(
-#    "Indice de Kandel-Moles par Livre",
-#    "Indice de Flesch-Kincaid par Livre"
-#))
-
-plt1 = px.bar(
-    final_pd,
+fig = px.bar(
+    global_readability,
     x="title",
-    y="kandel_moles",
-    title="Indice de Kandel-Moles par Livre",
-    labels={"title": "Livre", "kandel_moles": "Indice Kandel-Moles"},
+    y=["kandel_moles", "flesch_kincaid"], facet_col="variable",
     color="type",
-    category_orders={"title": final_pd["title"].tolist()}
-).update_yaxes(range=[0, 80])
-
-plt2 = px.bar(
-    final_pd,
-    x="title",
-    y="flesch_kincaid",
-    title="Indice de Flesch-Kincaid par Livre",
-    labels={"title": "Livre", "flesch_kincaid": "Indice Flesch-Kincaid"},
-    color="type",
-    category_orders={"title": final_pd["title"].tolist()}
-).update_yaxes(range=[0, 80])
-
-plt1.show()
-plt2.show()
+    category_orders={"title": global_readability["title"].tolist()},
+    title="Readability indices for each book",
+    labels={"value": "Readability index", "variable": "Index", "type": "Movement", "title": "Book"},
+    hover_data={"value": ":.2f"}
+)
+fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[1]))
+fig.update_xaxes(showticklabels=False)
+fig.show()
 ```
+
+*Note: We hid the titles since they make the plot less readable, you can see them by hovering over the bars.*
 
 As we can see, the two indices are highly correlated but the Flesch-Kincaid index is systematically lower than the Kandel-Moles index. Indeed, the Flesch-Kincaid formula is calibrated for English texts and gives a much higher weight to the number of syllables per word. However French naturally tends to have more syllables per word than English which leads every text to be deemed overly difficult to read by the Flesch-Kincaid formula.
 
@@ -100,49 +84,39 @@ Now focusing on the Kandel-Moles index, we notice that 13 out of the 15 easiest 
 
 We will now compute Kandel-Moles index again but this time on sliding windows of paragraphs instead of the whole book. This will allow us to see how the readability of the text evolves throughout the book and if there are significant variations between different parts of the same book.
 
-Since this is a per novel approach, we will only focus on a subset of 4 novels: the two easiest to read (*La Coucaratcha 1 & 3*) and the two hardest to read (*La Comédie Humaine 1* & *Rome*) according to the Kandel-Moles index computed on the whole book.
+Since this is a per novel approach, we will only focus on a subset of 4 novels: the two easiest to read (*La Coucaratcha 1 & 2*) and the two hardest to read (*La Comédie Humaine 1* & *Rome*) according to the Kandel-Moles index computed on the whole book.
 
 ```{python}
-ids = [38971, 39825, 34528, 41211]
-
-selected = result.filter(F.col("id").isin(ids))
-
-def sliding(n):
+def sliding_readability(df, n):
     return compute_readability(
-        selected
-        .withColumn("g_id", F.floor(F.col("p_id") / F.lit(n))),
+        df.withColumn("g_id", F.floor(F.col("p_id") / F.lit(n))),
         "g_id"
     )
 
-sliding_100 = sliding(100)
-sliding_200 = sliding(200)
+ids = [38971, 39024, 34528, 41211]
+selected = result.filter(F.col("id").isin(ids))
+
+sliding_100 = sliding_readability(selected, 100)
+sliding_200 = sliding_readability(selected, 200)
 ```
 
 First, let's look at the sliding Kandel-Moles index with a window of 100 paragraphs:
 
 ```{python}
-#| label: sliding-plots
-#| layout-ncol: 2
+#| label: sliding-plots-100
 
-for id in ids:
-    to_graph = (
-        sliding_100
-        .filter(F.col("id") == id)
-        .sort("kandel_moles", ascending=True)
-        .toPandas()
-    )
-
-    plt = px.bar(
-        to_graph,
-        x="g_id",
-        y="kandel_moles",
-        title=f"Indice de Kandel-Moles pour {id}",
-        labels={"title": "Livre", "kandel_moles": "Indice Kandel-Moles"},
-        color="type",
-        category_orders={"title": final_pd["title"].tolist()}
-    )
-
-    plt.show()
+fig = px.bar(
+    sliding_100,
+    x="g_id",
+    y="kandel_moles",
+    facet_col="title",
+    title="Sliding Kandel-Moles index with a window of 100 paragraphs",
+    labels={"g_id": "Window ID", "kandel_moles": "Readability", "title": "Book"},
+    hover_data={"kandel_moles": ":.2f"}
+)
+fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[1]))
+fig.update_xaxes(matches=None)
+fig.show()
 ```
 
 The most striking observation is that the Kandel-Moles index is much more volatile when computed on sliding windows than on the whole book. For example, *Rome*, which was graded as the most difficult book to read with a score of 58.33 on the whole book, has some windows with a Kandel-Moles index as low as 50 and as high as 71.75. This suggests that the readability of the text can vary significantly throughout the book and that some parts of the book can be much easier to read than others.
@@ -150,28 +124,20 @@ The most striking observation is that the Kandel-Moles index is much more volati
 Now let's look at the sliding Kandel-Moles index with a window of 200 paragraphs:
 
 ```{python}
-#| label: sliding-plots2
-#| layout-ncol: 2
+#| label: sliding-plots-200
 
-for id in ids:
-    to_graph = (
-        sliding_200
-        .filter(F.col("id") == id)
-        .sort("kandel_moles", ascending=True)
-        .toPandas()
-    )
-
-    plt = px.bar(
-        to_graph,
-        x="g_id",
-        y="kandel_moles",
-        title=f"Indice de Kandel-Moles pour {id}",
-        labels={"title": "Livre", "kandel_moles": "Indice Kandel-Moles"},
-        color="type",
-        category_orders={"title": final_pd["title"].tolist()}
-    )
-
-    plt.show()
+fig = px.bar(
+    sliding_200,
+    x="g_id",
+    y="kandel_moles",
+    facet_col="title",
+    title="Sliding Kandel-Moles index with a window of 200 paragraphs",
+    labels={"g_id": "Window ID", "kandel_moles": "Readability", "title": "Book"},
+    hover_data={"kandel_moles": ":.2f"}
+)
+fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[1]))
+fig.update_xaxes(matches=None)
+fig.show()
 ```
 
 Just like with the window of 100 paragraphs, we can see that the Kandel-Moles index is quite volatile with a window of 200 paragraphs. However, the variations are less extreme and are closer to the overall index.

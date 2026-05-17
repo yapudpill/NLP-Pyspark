@@ -67,7 +67,7 @@ if do_annotation:
 else:
     result = spark.read.parquet(str(annotation_cache))
 
-result.persist()
+result = result.repartition(16, "id").persist()
 
 if do_annotation: result.write.parquet(str(annotation_cache))
 ```
