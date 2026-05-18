@@ -42,7 +42,7 @@ def compute_readability(df, *groups):
             F.sum("syllables").alias("num_syllables")
         )
         .withColumns({"kandel_moles": KM, "flesch_kincaid": FK})
-        .join(books, on="id")
+        .join(F.broadcast(books), on="id")
     )
 ```
 
@@ -159,7 +159,7 @@ zipf = (
     .groupBy("id", "word")
     .agg(F.count("*").alias("freq"))
     .withColumn("rank", F.row_number().over(rank_window))
-    .join(books.select("id", "title"), on="id")
+    .join(F.broadcast(books.select("id", "title")), on="id")
     .orderBy("title", "rank")
 )
 
@@ -180,7 +180,44 @@ Unsurprisingly, all the books do follow Zipf's law quite closely. Some books hav
 
 # Our experience with pySpark
 
+We used the Spark UI (Jobs, Stages, and SQL tabs) to understand how our transformations were executed. The SQL tab highlighted stages with large shuffle read/write and long task times. This was especially useful when iterating on heavy workloads, where a single action (for example a `.toPandas()` for plotting) can trigger a full recomputation of the pipeline.
 
+## Critical shuffles
+
+The main sources of expensive shuffles in our workflow were:
+
+- repartitioning of `result`: after the annotation step, we had to `repartition(16, "id")` to ensure a good parallelism for the subsequent aggregations. This shuffle was necessary but we had to be careful not to trigger it multiple times by caching the result immediately after.
+
+    ![](img/repartition_result.png)
+
+    In the screenshot above, we can see that stage 3 is the one responsible for the shuffle, with a large shuffle write of 154 MB running for 1.4 min. The other stages are much faster since they are executed on empty partitions.
+
+- Aggregations after explode: computing word frequencies for Zipf plots requires `explode` followed by `groupBy`, which triggers a large shuffle because the number of rows grows dramatically.
+- Window functions with ordering: the Zipf computation uses a window with `partitionBy` + `orderBy`, which introduces a sort within each partition and leads to shuffle + sort stages.
+
+## Mitigation strategies and impact
+
+We applied several strategies to reduce shuffle cost and verified their impact in the Spark UI by looking at reduced shuffle read/write and shorter stages:
+
+- **Broadcast small tables:** The metadata table `books` is small, so using `broadcast()` removes the shuffle for that join and converts it to a map-side join.
+- **Reduce data before wide transformations:** Selecting only the needed columns and filtering early keeps the shuffle payload smaller, which directly reduces shuffle write/read sizes.
+- **Partitioning and shuffle partitions:** Repartitioning the annotations on the grouping key `id` helps the join stage avoid unnecessary reshuffles.
+
+## Caching and persisting
+
+Caching became important once we started reusing the same intermediate DataFrames for multiple plots and summaries. Persisting heavy intermediates (such as the tokenized/normalized text) avoided repeated scans of the raw text and reduced end-to-end latency for subsequent actions. We monitored the storage tab in the Spark UI to ensure that our cached DataFrames were not evicted and that we had enough memory allocated for caching.
+
+We actually had to increase the memory allocated to the driver and executors from the default 1 GB to 8 GB to avoid out-of-memory errors when caching the intermediate results. To make sure that our caching was effective, we followed the recommendations of the documentation and changed the serialization format to Kryo, which is more compact and faster to serialize/deserialize than the default Java serialization.
+
+## File format comparison
+
+We compared text storage formats on the local file system by writing the same dataset to CSV, JSON and Parquet.
+
+First, it was simply impossible to store our annotation on a CSV file since the annotations are arrays of strings (sentences, normalized tokens, lemmas) and CSV does not support nested structures. We could have flattened the arrays by exploding them but that would have resulted in a much larger file and it would be more difficult to read back the data in the original format.
+
+Then, we compared JSON and Parquet. The JSON file was 2 times larger than the Parquet file (213 MB vs 91 MB). Writing the JSON file was a bit faster than writing the Parquet file since JSON is a simpler format that does not require the overhead of columnar storage and compression. However, reading the JSON file was slower than reading the Parquet file since JSON requires parsing and deserialization, while Parquet is optimized for efficient storage and retrieval of structured data.
+
+These observations are consistent with Spark best practices: the columnar format Parquet produced much smaller files and was noticeably faster to read when selecting a subset of columns, while CSV and JSON were slower and more CPU intensive to parse.
 
 ----
 
