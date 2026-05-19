@@ -4,7 +4,8 @@ subtitle: Stylometric analysis of XIXth century literature
 format: html
 ---
 
-{{< include _annotate.qmd >}}
+{{< include _download_text.qmd >}}
+{{< include _annotate_text.qmd >}}
 
 # Stylometric analysis
 

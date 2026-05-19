@@ -1,3 +1,5 @@
+{{< include _download.qmd >}}
+
 # Extraction
 
 As suggested by the assignment, we decided to extract our corpus from the [Project Gutenberg](https://www.gutenberg.org/). We first selected the authors we wanted to work with, three realists (Balzac, Flaubert and Zola) and three romantics (Dumas, Sand, Sue). We then selected ten books for each author among the ones available on Project Gutenberg. They are the following:
@@ -36,4 +38,4 @@ The previously mentioned `get_text_by_id` function already loads the text by ret
 
 Each row of the DataFrame corresponds to a paragraph of a book. This splitting allows us to work with smaller chunks of text, leveraging Spark's distributed processing capabilities to perform our analyses more efficiently. Finally, splitting by paragraph is a trade-off between context and scalability: paragraphs are long enough to preserve stylistic signals, while remaining small enough to support parallel processing and robust aggregations.
 
-In the end, we have two DataFrames: `bools`, with the metadata of the books (title, author, type and ID) and `library` with the paragraphs and the id of the book they belong to. We can then join these two DataFrames to have all the information we need in one place. We save both of them as parquet files to avoid having to redo the downloading and transformation steps during development.
+In the end, we have two DataFrames: `books`, with the metadata of the books (title, author, type and ID) and `library` with the paragraphs and the id of the book they belong to. We can then join these two DataFrames to have all the information we need in one place. We save both of them as parquet files to avoid having to redo the downloading and transformation steps during development.

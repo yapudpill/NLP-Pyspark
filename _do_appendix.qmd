@@ -6,7 +6,11 @@ import re
 from IPython.display import Markdown
 
 # List of files to include
-files_to_read = ['_download.qmd', '_ELT.qmd', '_annotate.qmd', 'report.qmd']
+files_to_read = [
+    '_download.qmd', '_download_text.qmd',
+    '_annotate.qmd', '_annotate_text.qmd',
+    'report.qmd'
+]
 
 pattern = r'```\{python\}([^`]*)```'
 
