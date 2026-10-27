@@ -1,7 +1,16 @@
 ---
 title: Discovering pyspark and spark-nlp
 subtitle: Stylometric analysis of XIXth century literature
-format: html
+author:
+  - Anthony Fernandes
+  - Steven Lahoud
+title-block-banner: true
+toc: true
+lightbox: true
+code-line-numbers: true
+execute:
+  warning: false
+  echo: false
 ---
 
 {{< include _download_text.qmd >}}

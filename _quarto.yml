@@ -1,20 +1,8 @@
 project:
-  title: big-data
-  output-dir: _outdir
+  type: website
 
-author:
-  - Anthony Fernandes
-  - Steven Lahoud
-
-code-line-numbers: true
-execute:
-  warning: false
-  echo: false
-
-format:
-  html:
-    title-block-banner: true
-    toc: true
-    lightbox: true
-  revealjs:
-    lightbox: true
+website:
+  site-url: https://yapudpill.github.io/NLP-Pyspark/
+  repo-url: https://github.com/yapudpill/NLP-Pyspark
+  repo-branch: master
+  repo-actions: [edit, source, issue]

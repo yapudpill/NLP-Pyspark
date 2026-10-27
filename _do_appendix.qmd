@@ -9,7 +9,7 @@ from IPython.display import Markdown
 files_to_read = [
     '_download.qmd', '_download_text.qmd',
     '_annotate.qmd', '_annotate_text.qmd',
-    'report.qmd'
+    'index.qmd'
 ]
 
 pattern = r'```\{python\}([^`]*)```'

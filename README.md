@@ -2,6 +2,9 @@
 
 *Anthony Fernandes & Steven Lahoud*
 
+This project can be viewed [at this address](https://yapudpill.github.io/NLP-Pyspark/)
+or you can render it yourself using [quarto](https://quarto.org/).
+
 ## Dependencies
 
 Make sure to have Java between 11 and 17 with the `JAVA_HOME` environment

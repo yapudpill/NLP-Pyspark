@@ -11,6 +11,6 @@ __pycache__/
 
 # our stuff
 .vscode
-_outdir
+_site
 texts
 cache
